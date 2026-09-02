@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ChequeStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String
+  address   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cheques Cheque[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Cheque {
+  id           Int          @id @default(autoincrement())
+  chequeNumber String
+  bank         String
+  amount       Decimal      @db.Decimal(12, 2)
+  dueDate      DateTime
+  status       ChequeStatus @default(PENDING)
+  notes        String?
+  overdueNotifiedAt DateTime?
+
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([dueDate])
+  @@index([status])
+  @@index([overdueNotifiedAt])
+}
+
+/// Single-user admin account stored in the database.
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

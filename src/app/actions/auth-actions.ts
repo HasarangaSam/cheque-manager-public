@@ -1,0 +1,146 @@
+"use server";
+
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import {
+  AUTH_COOKIE_NAME,
+  createSessionToken,
+} from "@/lib/auth";
+import {
+  verifyUserCredentials,
+  createUser,
+  hasAnyUser,
+} from "@/lib/auth-db";
+
+
+import {
+  loginSchema,
+  registerSchema,
+  formatZodError,
+} from "@/lib/validations";
+
+export type AuthActionResponse = {
+  success: boolean;
+  error?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Login
+// ---------------------------------------------------------------------------
+
+export async function loginAction(
+  _prevState: AuthActionResponse | null,
+  formData: FormData
+): Promise<AuthActionResponse> {
+  const parseResult = loginSchema.safeParse({
+    username: formData.get("username"),
+    password: formData.get("password"),
+  });
+
+  if (!parseResult.success) {
+    return {
+      success: false,
+      error: formatZodError(parseResult.error),
+    };
+  }
+
+  const { username, password } = parseResult.data;
+  const user = await verifyUserCredentials(username, password);
+
+  if (!user) {
+    return {
+      success: false,
+      error: "Invalid username or password. Please try again.",
+    };
+  }
+
+  try {
+    const token = await createSessionToken(user.username);
+    const cookieStore = await cookies();
+
+    cookieStore.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error("Login session creation error:", err);
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again.",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Register (one-time — only when no user exists)
+// ---------------------------------------------------------------------------
+
+export async function registerAction(
+  _prevState: AuthActionResponse | null,
+  formData: FormData
+): Promise<AuthActionResponse> {
+  // Block if an account already exists
+  const alreadyHasUser = await hasAnyUser();
+  if (alreadyHasUser) {
+    return {
+      success: false,
+      error: "Registration is closed. An account already exists.",
+    };
+  }
+
+  const parseResult = registerSchema.safeParse({
+    username: formData.get("username"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parseResult.success) {
+    return {
+      success: false,
+      error: formatZodError(parseResult.error),
+    };
+  }
+
+  const { username, password } = parseResult.data;
+
+  try {
+    const user = await createUser(username, password);
+
+    // Auto-login after registration
+    const token = await createSessionToken(user.username);
+    const cookieStore = await cookies();
+
+    cookieStore.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error("Registration error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create account.",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Logout
+// ---------------------------------------------------------------------------
+
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(AUTH_COOKIE_NAME);
+  redirect("/login");
+}
+
+
