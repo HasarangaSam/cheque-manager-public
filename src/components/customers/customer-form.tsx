@@ -1,14 +1,28 @@
 "use client";
 
-import { useState, useTransition } from "react";
+/**
+ * CustomerForm — useActionState pattern
+ *
+ * Key patterns demonstrated:
+ * 1. useActionState — manages the server action's return state.
+ *    The action is bound with .bind() to embed the `mode` into the call.
+ * 2. useFormStatus (via <SubmitButton>) — no prop drilling for isPending.
+ * 3. Native <form action={formAction}> — no onSubmit, no manual FormData.
+ * 4. Inline error display from action state + toast for success.
+ */
+
+import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import { AlertCircle } from "lucide-react";
 import {
   createCustomer,
   updateCustomer,
 } from "@/app/actions/customer-actions";
+import type { ActionResponse } from "@/types/actions";
+import SubmitButton from "@/components/ui/submit-button";
 
 type CustomerFormData = {
   id?: number;
@@ -23,36 +37,25 @@ type CustomerFormProps = {
   initialData?: CustomerFormData;
 };
 
+const initialState: ActionResponse<{ id: number }> = { success: false };
+
 export default function CustomerForm({ mode, initialData }: CustomerFormProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Bind the correct action for the current mode.
+  // .bind() lets us pre-configure the action without losing the
+  // (prevState, formData) signature that useActionState requires.
+  const action = mode === "create" ? createCustomer : updateCustomer;
 
-    const form = event.currentTarget;
-    const formData = new FormData(form);
+  const [state, formAction, isPending] = useActionState(action, initialState);
 
-    startTransition(async () => {
-      if (mode === "create") {
-        const res = await createCustomer(formData);
-        if (res.success && res.data) {
-          toast.success(res.message || "Customer created successfully!");
-          router.push(`/customers/${res.data.id}`);
-        } else {
-          toast.error(res.error || "Failed to create customer");
-        }
-      } else {
-        const res = await updateCustomer(formData);
-        if (res.success && res.data) {
-          toast.success(res.message || "Customer updated successfully!");
-          router.push(`/customers/${res.data.id}`);
-        } else {
-          toast.error(res.error || "Failed to update customer");
-        }
-      }
-    });
-  }
+  // Handle successful submission — navigate and toast
+  useEffect(() => {
+    if (state.success && state.data) {
+      toast.success(state.message || (mode === "create" ? "Customer created!" : "Customer updated!"));
+      router.push(`/customers/${state.data.id}`);
+    }
+  }, [state, mode, router]);
 
   const cancelHref =
     mode === "edit" && initialData?.id
@@ -60,9 +63,17 @@ export default function CustomerForm({ mode, initialData }: CustomerFormProps) {
       : "/customers";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form action={formAction} className="space-y-6">
       {mode === "edit" && initialData?.id && (
         <input type="hidden" name="id" value={initialData.id} />
+      )}
+
+      {/* Inline error from server action state */}
+      {state.error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-700 text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-500" />
+          <span className="font-medium">{state.error}</span>
+        </div>
       )}
 
       <div className="grid gap-6 sm:grid-cols-2">
@@ -114,7 +125,6 @@ export default function CustomerForm({ mode, initialData }: CustomerFormProps) {
           />
         </div>
 
-
         <div>
           <label
             htmlFor="address"
@@ -144,7 +154,7 @@ export default function CustomerForm({ mode, initialData }: CustomerFormProps) {
             className="mb-2 block text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--muted)" }}
           >
-            Notes & Remarks
+            Notes &amp; Remarks
           </label>
           <textarea
             id="notes"
@@ -174,19 +184,16 @@ export default function CustomerForm({ mode, initialData }: CustomerFormProps) {
         >
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-        >
-          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isPending
-            ? "Saving..."
-            : mode === "create"
-            ? "Save Customer"
-            : "Save Changes"}
-        </button>
+        {/*
+         * SubmitButton reads useFormStatus() internally.
+         * No isPending prop needed — it subscribes to the <form> above.
+         */}
+        <SubmitButton
+          label={mode === "create" ? "Save Customer" : "Save Changes"}
+          pendingLabel="Saving…"
+          className="cursor-pointer"
+          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" } as React.CSSProperties}
+        />
       </div>
     </form>
   );

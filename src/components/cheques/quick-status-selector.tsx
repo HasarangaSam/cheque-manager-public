@@ -54,6 +54,11 @@ export default function QuickStatusSelector({
       bg: "bg-rose-50",
       text: "text-rose-800",
     },
+    CASH_SETTLED: {
+      border: "border-teal-300",
+      bg: "bg-teal-50",
+      text: "text-teal-800",
+    },
   };
 
   return (

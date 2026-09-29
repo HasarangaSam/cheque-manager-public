@@ -1,13 +1,28 @@
 "use client";
 
-import { useTransition, useState, useRef, useEffect } from "react";
+/**
+ * ChequeForm — useActionState pattern with complex client-side state
+ *
+ * This form has two layers of state:
+ * 1. Server action state (via useActionState) — handles submission result & errors
+ * 2. Local UI state (useState) — handles amount formatting and customer search dropdown
+ *
+ * This is intentional and correct: useActionState is for server round-trips,
+ * useState is for local interactive UI. They coexist cleanly.
+ *
+ * useFormStatus (via <SubmitButton>) handles button pending state without prop drilling.
+ */
+
+import { useActionState, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Loader2, Search, User, X } from "lucide-react";
+import { AlertCircle, Search, User, X } from "lucide-react";
 import { createCheque, updateCheque } from "@/app/actions/cheque-actions";
 import { getCustomersForSelection } from "@/app/actions/customer-actions";
+import type { ActionResponse } from "@/types/actions";
 import type { ChequeStatus } from "@/lib/cheque-status";
+import SubmitButton from "@/components/ui/submit-button";
 
 type ChequeFormData = {
   id?: number;
@@ -35,25 +50,24 @@ type ChequeFormProps = {
 
 function formatDate(date?: string | Date) {
   if (!date) return "";
-  if (typeof date === "string") {
-    return date.slice(0, 10);
-  }
+  if (typeof date === "string") return date.slice(0, 10);
   return date.toISOString().slice(0, 10);
 }
 
-// Format a numeric string with thousand-separator commas, preserving a trailing decimal point/digits
 function formatAmountDisplay(raw: string): string {
   if (!raw) return "";
-  // Split on the first decimal point
   const [intPart, decPart] = raw.split(".");
   const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
 }
 
-// Strip commas and return the raw decimal string suitable for submission
 function stripCommas(value: string): string {
   return value.replace(/,/g, "");
 }
+
+const initialState: ActionResponse<{ id: number; customerId: number }> = {
+  success: false,
+};
 
 export default function ChequeForm({
   mode,
@@ -63,9 +77,12 @@ export default function ChequeForm({
   customers,
 }: ChequeFormProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
 
-  // ── Amount formatting state ──
+  // Server action state — manages submission result and errors
+  const action = mode === "create" ? createCheque : updateCheque;
+  const [state, formAction, isPending] = useActionState(action, initialState);
+
+  // ── Local UI state — amount formatting ──
   const initialAmountRaw =
     initialData?.amount !== undefined ? String(initialData.amount) : "";
   const [amountDisplay, setAmountDisplay] = useState(
@@ -73,17 +90,41 @@ export default function ChequeForm({
   );
   const [rawAmount, setRawAmount] = useState(initialAmountRaw);
 
-  const [customerList, setCustomerList] = useState<CustomerOption[]>(customers || []);
+  // ── Local UI state — customer search dropdown ──
+  const [customerList, setCustomerList] = useState<CustomerOption[]>(
+    customers || []
+  );
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<CustomerOption | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Debounced real-time server search (limited to top 10 results)
+  // Handle successful submission — toast + navigate
+  useEffect(() => {
+    if (state.success && state.data) {
+      toast.success(
+        state.message ||
+          (mode === "create"
+            ? "Cheque created successfully!"
+            : "Cheque updated successfully!")
+      );
+      if (mode === "create") {
+        if (customerId) {
+          router.push(`/customers/${customerId}`);
+        } else {
+          router.push("/cheques");
+        }
+      } else {
+        router.push(`/cheques/${state.data.id}`);
+      }
+    }
+  }, [state, mode, customerId, router]);
+
+  // Debounced customer search
   useEffect(() => {
     if (customers === undefined) return;
-
     setIsSearching(true);
     const timer = setTimeout(async () => {
       try {
@@ -95,7 +136,6 @@ export default function ChequeForm({
         setIsSearching(false);
       }
     }, 200);
-
     return () => clearTimeout(timer);
   }, [searchTerm, customers]);
 
@@ -111,7 +151,7 @@ export default function ChequeForm({
     }
   };
 
-  // Close dropdown when clicking outside
+  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -122,61 +162,17 @@ export default function ChequeForm({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    // Validate customer selection if in search mode
-    if (customers && !selectedCustomer) {
-      toast.error("Please select a customer");
-      return;
-    }
-
-    // Validate amount
-    if (!rawAmount || isNaN(Number(rawAmount)) || Number(rawAmount) <= 0) {
-      toast.error("Please enter a valid amount greater than zero");
-      return;
-    }
-
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-
-    startTransition(async () => {
-      if (mode === "create") {
-        const res = await createCheque(formData);
-        if (res.success && res.data) {
-          toast.success(res.message || "Cheque created successfully!");
-          if (customerId) {
-            router.push(`/customers/${customerId}`);
-          } else {
-            router.push("/cheques");
-          }
-        } else {
-          toast.error(res.error || "Failed to create cheque");
-        }
-      } else {
-        const res = await updateCheque(formData);
-        if (res.success && res.data) {
-          toast.success(res.message || "Cheque updated successfully!");
-          router.push(`/cheques/${res.data.id}`);
-        } else {
-          toast.error(res.error || "Failed to update cheque");
-        }
-      }
-    });
-  }
-
   const cancelHref =
     mode === "edit" && initialData?.id
       ? `/cheques/${initialData.id}`
       : customerId
-      ? `/customers/${customerId}`
-      : "/cheques";
+        ? `/customers/${customerId}`
+        : "/cheques";
 
-  // Determine the customerId to use in the hidden input
   const resolvedCustomerId = customers ? selectedCustomer?.id : customerId;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form action={formAction} className="space-y-6">
       {mode === "create" ? (
         <input
           type="hidden"
@@ -187,26 +183,35 @@ export default function ChequeForm({
         <input type="hidden" name="id" value={initialData?.id} />
       )}
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      {/* Inline error from server action state */}
+      {state.error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-700 text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-500" />
+          <span className="font-medium">{state.error}</span>
+        </div>
+      )}
 
+      <div className="grid gap-6 sm:grid-cols-2">
         {/* ── Customer Selector ── */}
         {mode === "create" && customers ? (
-          /* Searchable Customer Picker */
           <div className="sm:col-span-2" ref={searchRef}>
             <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
               Customer <span className="text-red-500">*</span>
             </label>
 
             {selectedCustomer ? (
-              /* Selected customer chip */
               <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 shrink-0">
                     <User className="h-3.5 w-3.5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{selectedCustomer.name}</p>
-                    <p className="text-xs text-slate-500">{selectedCustomer.phone}</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {selectedCustomer.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedCustomer.phone}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -222,10 +227,9 @@ export default function ChequeForm({
                 </button>
               </div>
             ) : (
-              /* Search input + dropdown */
               <div className="relative">
                 {isSearching ? (
-                  <Loader2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-indigo-500" />
+                  <div className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
                 ) : (
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
@@ -252,8 +256,8 @@ export default function ChequeForm({
                         {isSearching
                           ? "Searching customers..."
                           : searchTerm.trim()
-                          ? "No customers match your search."
-                          : "No customers found. Add a customer first."}
+                            ? "No customers match your search."
+                            : "No customers found. Add a customer first."}
                       </p>
                     ) : (
                       <ul className="max-h-52 overflow-y-auto divide-y divide-slate-100">
@@ -272,8 +276,12 @@ export default function ChequeForm({
                                 <User className="h-3.5 w-3.5" />
                               </div>
                               <div>
-                                <p className="text-sm font-semibold text-slate-900">{c.name}</p>
-                                <p className="text-xs text-slate-500">{c.phone}</p>
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {c.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {c.phone}
+                                </p>
                               </div>
                             </button>
                           </li>
@@ -286,14 +294,15 @@ export default function ChequeForm({
             )}
           </div>
         ) : mode === "create" && customerName ? (
-          /* Locked customer (old behaviour – coming from customer profile page) */
           <div className="sm:col-span-2">
             <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">
               Customer
             </label>
             <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5">
               <User className="h-4 w-4 text-slate-400 shrink-0" />
-              <span className="text-sm font-semibold text-slate-700">{customerName}</span>
+              <span className="text-sm font-semibold text-slate-700">
+                {customerName}
+              </span>
             </div>
           </div>
         ) : null}
@@ -344,9 +353,8 @@ export default function ChequeForm({
           >
             Amount (LKR) <span className="text-red-500">*</span>
           </label>
-          {/* Hidden input carries the raw value to the server action */}
+          {/* Hidden input carries raw numeric value to the server action */}
           <input type="hidden" name="amount" value={rawAmount} />
-          {/* Visible formatted display input */}
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
               LKR
@@ -360,7 +368,6 @@ export default function ChequeForm({
               disabled={isPending}
               onChange={(e) => {
                 const raw = stripCommas(e.target.value);
-                // Allow only digits and at most one decimal point with up to 2 places
                 if (raw === "" || /^\d*(\.\d{0,2})?$/.test(raw)) {
                   setRawAmount(raw);
                   setAmountDisplay(formatAmountDisplay(raw));
@@ -440,19 +447,14 @@ export default function ChequeForm({
         >
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
-          style={{ background: "linear-gradient(135deg, #0ea5e9, #6366f1)" }}
-        >
-          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isPending
-            ? "Saving..."
-            : mode === "create"
-            ? "Save Cheque"
-            : "Save Changes"}
-        </button>
+        <SubmitButton
+          label={mode === "create" ? "Save Cheque" : "Save Changes"}
+          pendingLabel="Saving…"
+          className="cursor-pointer"
+          style={{
+            background: "linear-gradient(135deg, #0ea5e9, #6366f1)",
+          } as React.CSSProperties}
+        />
       </div>
     </form>
   );

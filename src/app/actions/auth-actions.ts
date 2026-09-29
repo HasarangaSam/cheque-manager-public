@@ -2,22 +2,10 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  AUTH_COOKIE_NAME,
-  createSessionToken,
-} from "@/lib/auth";
-import {
-  verifyUserCredentials,
-  createUser,
-  hasAnyUser,
-} from "@/lib/auth-db";
+import { AUTH_COOKIE_NAME, createSessionToken } from "@/lib/auth";
+import { verifyUserCredentials, createUser, hasAnyUser } from "@/lib/auth-db";
 
-
-import {
-  loginSchema,
-  registerSchema,
-  formatZodError,
-} from "@/lib/validations";
+import { loginSchema, registerSchema, formatZodError } from "@/lib/validations";
 
 export type AuthActionResponse = {
   success: boolean;
@@ -30,7 +18,7 @@ export type AuthActionResponse = {
 
 export async function loginAction(
   _prevState: AuthActionResponse | null,
-  formData: FormData
+  formData: FormData,
 ): Promise<AuthActionResponse> {
   const parseResult = loginSchema.safeParse({
     username: formData.get("username"),
@@ -65,8 +53,6 @@ export async function loginAction(
       path: "/",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
-
-    return { success: true };
   } catch (err) {
     console.error("Login session creation error:", err);
     return {
@@ -74,6 +60,11 @@ export async function loginAction(
       error: "An unexpected error occurred. Please try again.",
     };
   }
+
+  // redirect() must be called OUTSIDE the try/catch block.
+  // It works by throwing a special Next.js error internally —
+  // catching it would swallow the redirect.
+  redirect("/");
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +73,7 @@ export async function loginAction(
 
 export async function registerAction(
   _prevState: AuthActionResponse | null,
-  formData: FormData
+  formData: FormData,
 ): Promise<AuthActionResponse> {
   // Block if an account already exists
   const alreadyHasUser = await hasAnyUser();
@@ -122,8 +113,6 @@ export async function registerAction(
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
     });
-
-    return { success: true };
   } catch (err) {
     console.error("Registration error:", err);
     return {
@@ -131,6 +120,9 @@ export async function registerAction(
       error: err instanceof Error ? err.message : "Failed to create account.",
     };
   }
+
+  // redirect() must be called OUTSIDE the try/catch — see loginAction above.
+  redirect("/");
 }
 
 // ---------------------------------------------------------------------------
@@ -142,5 +134,3 @@ export async function logoutAction() {
   cookieStore.delete(AUTH_COOKIE_NAME);
   redirect("/login");
 }
-
-

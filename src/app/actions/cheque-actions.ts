@@ -11,15 +11,12 @@ import {
   deleteChequeSchema,
   formatZodError,
 } from "@/lib/validations";
+import type { ActionResponse } from "@/types/actions";
 
-export type ActionResponse<T = unknown> = {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
-};
+export type { ActionResponse };
 
 export async function createCheque(
+  _prevState: ActionResponse<{ id: number; customerId: number }> | null,
   formData: FormData
 ): Promise<ActionResponse<{ id: number; customerId: number }>> {
   try {
@@ -90,6 +87,7 @@ export async function createCheque(
 }
 
 export async function updateCheque(
+  _prevState: ActionResponse<{ id: number; customerId: number }> | null,
   formData: FormData
 ): Promise<ActionResponse<{ id: number; customerId: number }>> {
   try {

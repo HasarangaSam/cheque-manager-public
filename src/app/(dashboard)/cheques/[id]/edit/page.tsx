@@ -53,7 +53,10 @@ export default async function EditChequePage({ params }: EditChequePageProps) {
               Edit Cheque #{cheque.chequeNumber}
             </h1>
             <p className="text-xs text-slate-500">
-              Customer: <span className="font-semibold text-slate-800">{cheque.customer.name}</span>
+              Customer:{" "}
+              <span className="font-semibold text-slate-800">
+                {cheque.customer.name}
+              </span>
             </p>
           </div>
         </div>

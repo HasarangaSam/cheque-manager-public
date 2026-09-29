@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-export const chequeStatusSchema = z.enum(["PENDING", "CLEARED", "BOUNCED"], {
+export const chequeStatusSchema = z.enum(["PENDING", "CLEARED", "BOUNCED", "CASH_SETTLED"], {
   error: "Invalid cheque status",
 });
+
 
 export const chequeAmountSchema = z
   .string({ error: "Amount is required" })

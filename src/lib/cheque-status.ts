@@ -1,11 +1,14 @@
-export type ChequeStatus = "PENDING" | "CLEARED" | "BOUNCED";
+export type ChequeStatus = "PENDING" | "CLEARED" | "BOUNCED" | "CASH_SETTLED";
+
 
 export type ChequeAttentionStatus =
   | "UPCOMING"
   | "DUE_SOON"
   | "OVERDUE"
   | "CLEARED"
-  | "BOUNCED";
+  | "BOUNCED"
+  | "CASH_SETTLED";
+
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -40,6 +43,10 @@ export function getChequeAttentionStatus(
     return "BOUNCED";
   }
 
+  if (status === "CASH_SETTLED") {
+    return "CASH_SETTLED";
+  }
+
   const differenceInDays = getChequeDaysDifference(dueDate, today);
 
   if (differenceInDays < 0) {
@@ -60,6 +67,8 @@ export function getDueUrgencyText(
 ): string {
   if (status === "CLEARED") return "Cleared";
   if (status === "BOUNCED") return "Bounced";
+  if (status === "CASH_SETTLED") return "Cash Settled";
+
 
   const diff = getChequeDaysDifference(dueDate, today);
 

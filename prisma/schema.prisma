@@ -11,6 +11,7 @@ enum ChequeStatus {
   PENDING
   CLEARED
   BOUNCED
+  CASH_SETTLED
 }
 
 model Customer {

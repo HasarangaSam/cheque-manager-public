@@ -10,15 +10,12 @@ import {
   customerSelectionSchema,
   formatZodError,
 } from "@/lib/validations";
+import type { ActionResponse } from "@/types/actions";
 
-export type ActionResponse<T = unknown> = {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
-};
+export type { ActionResponse };
 
 export async function createCustomer(
+  _prevState: ActionResponse<{ id: number }> | null,
   formData: FormData
 ): Promise<ActionResponse<{ id: number }>> {
   try {
@@ -69,6 +66,7 @@ export async function createCustomer(
 }
 
 export async function updateCustomer(
+  _prevState: ActionResponse<{ id: number }> | null,
   formData: FormData
 ): Promise<ActionResponse<{ id: number }>> {
   try {

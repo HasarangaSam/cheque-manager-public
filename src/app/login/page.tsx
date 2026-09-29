@@ -1,38 +1,48 @@
 "use client";
 
-import { useState, useTransition } from "react";
+/**
+ * Login Page
+ *
+ * Demonstrates two key React 19 / Next.js 15 patterns:
+ *
+ * 1. useActionState — replaces the useState(error) + useTransition combo.
+ *    The server action's return value becomes the `state` object.
+ *    Signature: [state, formAction, isPending] = useActionState(action, initialState)
+ *
+ * 2. useFormStatus (in <SubmitButton>) — the child button reads the parent
+ *    form's pending state without any prop drilling.
+ *
+ * 3. Native <form action={formAction}> — progressive enhancement.
+ *    No manual e.preventDefault() or FormData construction needed.
+ */
+
+import { useActionState, useState } from "react";
 import Link from "next/link";
-import { Lock, User, Eye, EyeOff, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
+import {
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  AlertCircle,
+} from "lucide-react";
 import { loginAction } from "@/app/actions/auth-actions";
+import type { AuthActionResponse } from "@/app/actions/auth-actions";
+import SubmitButton from "@/components/ui/submit-button";
+
+const initialState: AuthActionResponse = { success: false };
 
 export default function LoginPage() {
-  const [isPending, startTransition] = useTransition();
+  // useActionState wires the server action to this component's state.
+  // - `state`      → the last return value from loginAction (or initialState)
+  // - `formAction` → pass as <form action={formAction}>
+  // - `isPending`  → true while the action is in-flight (also readable via useFormStatus in children)
+  const [state, formAction, isPending] = useActionState(
+    loginAction,
+    initialState
+  );
+
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
-    const password = formData.get("password") as string;
-
-    if (!username?.trim() || !password) {
-      setError("Please enter both username and password.");
-      return;
-    }
-
-    startTransition(async () => {
-      const res = await loginAction(null, formData);
-      if (res.success) {
-        // Full reload or router.replace to refresh session cookies in server components
-        window.location.href = "/";
-      } else {
-        setError(res.error || "Authentication failed. Please try again.");
-      }
-    });
-  }
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 relative overflow-hidden selection:bg-indigo-500 selection:text-white">
@@ -52,20 +62,24 @@ export default function LoginPage() {
               ChequeManager
             </h1>
             <p className="mt-1 text-xs text-slate-400 font-medium tracking-wide uppercase">
-              Financial Ledger & Cheque Tracking
+              Financial Ledger &amp; Cheque Tracking
             </p>
           </div>
 
-          {/* Error Message Box */}
-          {error && (
+          {/* Error Message — sourced from server action state, not local useState */}
+          {state.error && (
             <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-rose-400 text-xs animate-in fade-in slide-in-from-top-2 duration-200">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span className="leading-relaxed font-medium">{error}</span>
+              <span className="leading-relaxed font-medium">{state.error}</span>
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/*
+           * Native form action — no onSubmit handler, no manual FormData.
+           * Next.js serializes the form fields and calls the server action.
+           * Works even without JavaScript (progressive enhancement).
+           */}
+          <form action={formAction} className="space-y-5">
             {/* Username Input */}
             <div>
               <label
@@ -130,21 +144,15 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isPending}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition-all hover:bg-indigo-500 hover:shadow-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Signing In...</span>
-                </>
-              ) : (
-                <span>Sign In to Dashboard</span>
-              )}
-            </button>
+            {/*
+             * SubmitButton uses useFormStatus() internally.
+             * It reads `pending` from the parent <form> — zero prop drilling.
+             */}
+            <SubmitButton
+              label="Sign In to Dashboard"
+              pendingLabel="Signing In…"
+              className="mt-6 w-full justify-center bg-indigo-600 shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950 cursor-pointer"
+            />
           </form>
 
           {/* Footer Note */}

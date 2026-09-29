@@ -39,6 +39,13 @@ const config: Record<
     border: "border-rose-200",
     dot: "bg-rose-500",
   },
+  CASH_SETTLED: {
+    label: "Cash Settled",
+    bg: "bg-teal-50",
+    text: "text-teal-700",
+    border: "border-teal-200",
+    dot: "bg-teal-500",
+  },
 };
 
 type StatusBadgeProps = {
