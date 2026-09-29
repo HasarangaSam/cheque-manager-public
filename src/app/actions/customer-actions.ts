@@ -16,7 +16,7 @@ export type { ActionResponse };
 
 export async function createCustomer(
   _prevState: ActionResponse<{ id: number }> | null,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionResponse<{ id: number }>> {
   try {
     await requireAuth();
@@ -67,7 +67,7 @@ export async function createCustomer(
 
 export async function updateCustomer(
   _prevState: ActionResponse<{ id: number }> | null,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionResponse<{ id: number }>> {
   try {
     await requireAuth();
@@ -163,8 +163,10 @@ export async function deleteCustomer(id: number): Promise<ActionResponse> {
 
 export async function getCustomersForSelection(
   query?: string,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<Array<{ id: number; name: string; phone: string }>> {
+  await requireAuth();
+
   try {
     const parseResult = customerSelectionSchema.safeParse({ query, limit });
     const { query: validatedQuery, limit: validatedLimit } = parseResult.success
@@ -195,4 +197,3 @@ export async function getCustomersForSelection(
     return [];
   }
 }
-

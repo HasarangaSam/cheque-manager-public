@@ -2,8 +2,14 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE_NAME, createSessionToken } from "@/lib/auth";
-import { verifyUserCredentials, createUser, hasAnyUser } from "@/lib/auth-db";
+import { AUTH_COOKIE_NAME, SESSION_DURATION_SECONDS } from "@/lib/auth";
+import {
+  createSession,
+  revokeSessionToken,
+  verifyUserCredentials,
+  createUser,
+  hasAnyUser,
+} from "@/lib/auth-db";
 
 import { loginSchema, registerSchema, formatZodError } from "@/lib/validations";
 
@@ -43,15 +49,15 @@ export async function loginAction(
   }
 
   try {
-    const token = await createSessionToken(user.username);
+    const session = await createSession(user.username);
     const cookieStore = await cookies();
 
-    cookieStore.set(AUTH_COOKIE_NAME, token, {
+    cookieStore.set(AUTH_COOKIE_NAME, session.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: SESSION_DURATION_SECONDS,
     });
   } catch (err) {
     console.error("Login session creation error:", err);
@@ -103,15 +109,15 @@ export async function registerAction(
     const user = await createUser(username, password);
 
     // Auto-login after registration
-    const token = await createSessionToken(user.username);
+    const session = await createSession(user.username);
     const cookieStore = await cookies();
 
-    cookieStore.set(AUTH_COOKIE_NAME, token, {
+    cookieStore.set(AUTH_COOKIE_NAME, session.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: SESSION_DURATION_SECONDS,
     });
   } catch (err) {
     console.error("Registration error:", err);
@@ -131,6 +137,16 @@ export async function registerAction(
 
 export async function logoutAction() {
   const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+
+  if (token) {
+    try {
+      await revokeSessionToken(token);
+    } catch (error) {
+      console.error("Session revocation error:", error);
+    }
+  }
+
   cookieStore.delete(AUTH_COOKIE_NAME);
   redirect("/login");
 }

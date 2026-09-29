@@ -9,6 +9,7 @@ Built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **Zod**, *
 ## ✨ Features
 
 ### 📋 Cheque Lifecycle Management
+
 - **Status Tracking**: Monitor cheques across `PENDING`, `CLEARED`, and `BOUNCED` states with one-click inline status updates.
 - **Smart Due-Date Urgency**: Dynamic real-time urgency badges:
   - 🟢 **Upcoming** — Due in more than 3 days
@@ -17,6 +18,7 @@ Built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **Zod**, *
 - **Full Cheque Ledger**: Search by cheque number, customer name, bank, or filter by status and urgency.
 
 ### 🏗️ Modern Next.js Architecture
+
 - **Server Actions** — All mutations (create, update, delete) run as typed server-side functions with no API routes needed.
 - **`useActionState`** — Form state (errors, loading, response) managed via React 19's `useActionState` hook, replacing manual `useState + useTransition` patterns.
 - **`useFormStatus`** — Submit buttons read pending state from the parent `<form>` via `useFormStatus` — zero prop drilling.
@@ -24,30 +26,35 @@ Built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **Zod**, *
 - **Server-side `redirect()`** — Auth redirects happen entirely server-side inside the action, eliminating client-side `window.location` hacks.
 
 ### 🛡️ Authentication & Security
-- **JWT Session Tokens** — Signed with `jose` (HS256), stored in `httpOnly; sameSite=lax` cookies. Edge-compatible.
-- **Middleware Route Guard** — [`middleware.ts`](src/middleware.ts) enforces authentication on all protected routes, short-circuits cron endpoints.
+
+- **Database-Backed Sessions** — Random 256-bit tokens are stored as SHA-256 hashes, expire after seven days, and can be revoked on logout.
+- **Proxy Route Guard** — [`proxy.ts`](src/proxy.ts) performs a cookie-presence redirect; the dashboard, server actions, and API routes validate the session against the database.
 - **bcrypt Password Hashing** — 12 rounds via `bcryptjs` for stored credentials.
 - **Dual Credential Sources** — Supports both environment variable credentials (dev/admin override) and database-stored accounts.
 - **Single-Account Registration** — Registration permanently closes after the first account is created.
 - **`requireAuth()` guard** — Every server action verifies the session before touching the database.
 
 ### 🛡️ End-to-End Runtime Validation (Zod)
+
 - Strict runtime schemas via **Zod v4** across all Server Actions, API routes, and forms.
 - Auto-trimming, UTC date normalization, and monetary precision validation.
 - Server action errors surfaced inline via `useActionState` state — not just toast-only.
 
 ### 📧 Overdue Notifications (Automated Email)
+
 - **Vercel Cron**: Daily scheduled check at `03:00 UTC` (8:30 AM SLST).
 - **Consolidated Summary**: One elegant HTML email aggregating all uncleared overdue cheques — no per-cheque spam.
 - **Zero-Noise Condition**: No email sent if no cheques are overdue.
 - **Rich HTML Report**: Total liability, per-cheque breakdown, days delayed, customer contact, and dashboard deep-link.
 
 ### 👥 Customer Management
+
 - Full CRUD for customer profiles with name, phone, address, and notes.
 - Per-customer cheque history with total pending liabilities.
 - Inline searchable customer picker when creating cheques.
 
 ### 📊 Data Export & Filtering
+
 - Export filtered cheque records to **CSV** via a dedicated API route.
 - Multi-dimensional filtering: status, urgency, bank, date range, and free-text search.
 
@@ -55,23 +62,24 @@ Built with **Next.js 16 (App Router)**, **React 19**, **TypeScript**, **Zod**, *
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | [Next.js 16](https://nextjs.org/) (App Router, Turbopack) |
-| Language | [TypeScript 5](https://www.typescriptlang.org/) |
-| UI | [React 19](https://react.dev/), [Tailwind CSS 4](https://tailwindcss.com/), [Lucide Icons](https://lucide.dev/) |
-| Validation | [Zod v4](https://zod.dev/) |
-| Database | [PostgreSQL via Neon](https://neon.tech/) |
-| ORM | [Prisma ORM 7](https://www.prisma.io/) |
-| Auth | `jose` (JWT) + `bcryptjs` |
-| Email | [Nodemailer](https://nodemailer.com/) (Gmail SMTP) |
-| Deployment | [Vercel](https://vercel.com/) + Vercel Cron Jobs |
+| Layer      | Technology                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------- |
+| Framework  | [Next.js 16](https://nextjs.org/) (App Router, Turbopack)                                                       |
+| Language   | [TypeScript 5](https://www.typescriptlang.org/)                                                                 |
+| UI         | [React 19](https://react.dev/), [Tailwind CSS 4](https://tailwindcss.com/), [Lucide Icons](https://lucide.dev/) |
+| Validation | [Zod v4](https://zod.dev/)                                                                                      |
+| Database   | [PostgreSQL via Neon](https://neon.tech/)                                                                       |
+| ORM        | [Prisma ORM 7](https://www.prisma.io/)                                                                          |
+| Auth       | `jose` (JWT) + `bcryptjs`                                                                                       |
+| Email      | [Nodemailer](https://nodemailer.com/) (Gmail SMTP)                                                              |
+| Deployment | [Vercel](https://vercel.com/) + Vercel Cron Jobs                                                                |
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Prerequisites
+
 - **Node.js** v20+
 - **npm**, **pnpm**, or **yarn**
 - **PostgreSQL Database** (e.g. Neon, Supabase, or local Postgres)
@@ -100,8 +108,6 @@ DIRECT_URL="postgresql://user:password@direct-url/neondb?sslmode=require"
 # Admin Credentials (env override — no DB needed for initial login)
 AUTH_USERNAME="admin"
 AUTH_PASSWORD="your_secure_password"
-AUTH_SECRET="your_32_character_random_secret"
-
 # Email Notifications (Gmail SMTP with App Password)
 SMTP_USER="your_email@gmail.com"
 SMTP_PASS="your_google_app_password"
@@ -199,6 +205,7 @@ curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/che
 ## 🏛️ Architecture Highlights
 
 ### Server Actions Pattern
+
 Every mutation uses a Server Action with the `(prevState, formData)` signature required by `useActionState`:
 
 ```ts
@@ -220,6 +227,7 @@ const [state, formAction, isPending] = useActionState(createCheque, null);
 ```
 
 ### useFormStatus — Decoupled Pending State
+
 ```tsx
 // submit-button.tsx — child of <form>
 function SubmitButton() {
@@ -229,13 +237,15 @@ function SubmitButton() {
 ```
 
 ### Auth Flow
+
 ```
-Request → middleware.ts (Edge) → verifySessionToken (jose JWT)
+Request → proxy.ts → cookie-presence redirect
   ├── /login, /register  → allow (public)
   ├── /api/cron/*        → allow (secured by CRON_SECRET in handler)
-  └── everything else    → redirect /login if no valid session
+  └── dashboard           → getSession() checks token hash, expiry, and revocation in Postgres
 
-Server Action → requireAuth() → getSession() → JWT verify → proceed or throw
+Server Action → requireAuth() → database session check → proceed or throw
+Logout        → set revokedAt → delete cookie
 ```
 
 ---

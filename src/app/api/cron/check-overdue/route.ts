@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getChequeDaysDifference } from "@/lib/cheque-status";
 import { sendOverdueNotificationEmail, OverdueChequeItem } from "@/lib/email";
-import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
+import { AUTH_COOKIE_NAME } from "@/lib/auth-cookie";
+import { getSessionForToken } from "@/lib/auth-db";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ async function isAuthorized(request: NextRequest): Promise<boolean> {
   // Check active admin session cookie
   const sessionToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
+    const session = await getSessionForToken(sessionToken);
     if (session) return true;
   }
 

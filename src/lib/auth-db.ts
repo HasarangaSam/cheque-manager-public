@@ -5,9 +5,15 @@
  */
 
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
+import { SESSION_DURATION_SECONDS } from "@/lib/auth-cookie";
 import { prisma } from "@/lib/prisma";
 
 const BCRYPT_ROUNDS = 12;
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 // ---------------------------------------------------------------------------
 // Password hashing
@@ -19,7 +25,10 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /** Verify a plain-text password against a bcrypt hash. */
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  hash: string,
+): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
 
@@ -33,7 +42,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
  */
 export function verifyCredentialsFromEnv(
   username: string,
-  password: string
+  password: string,
 ): { username: string } | null {
   const envUsername = process.env.AUTH_USERNAME;
   const envPassword = process.env.AUTH_PASSWORD;
@@ -56,7 +65,7 @@ export function verifyCredentialsFromEnv(
  */
 export async function verifyCredentialsFromDB(
   username: string,
-  password: string
+  password: string,
 ): Promise<{ id: number; username: string } | null> {
   try {
     const user = await prisma.user.findUnique({
@@ -81,7 +90,7 @@ export async function verifyCredentialsFromDB(
  */
 export async function verifyUserCredentials(
   username: string,
-  password: string
+  password: string,
 ): Promise<{ username: string } | null> {
   // 1. Check developer / admin credentials from environment variables
   const envUser = verifyCredentialsFromEnv(username, password);
@@ -92,6 +101,55 @@ export async function verifyUserCredentials(
   if (dbUser) return { username: dbUser.username };
 
   return null;
+}
+
+/** Create a seven-day session and persist only a hash of its random token. */
+export async function createSession(
+  username: string,
+): Promise<{ token: string; expiresAt: Date }> {
+  const token = randomBytes(32).toString("base64url");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_DURATION_SECONDS * 1000);
+
+  await prisma.session.deleteMany({
+    where: { expiresAt: { lte: now } },
+  });
+  await prisma.session.create({
+    data: {
+      username,
+      tokenHash: hashSessionToken(token),
+      expiresAt,
+    },
+  });
+
+  return { token, expiresAt };
+}
+
+/** Resolve an active session token to its username. */
+export async function getSessionForToken(
+  token: string | undefined | null,
+): Promise<{ username: string } | null> {
+  if (!token) return null;
+
+  return prisma.session.findFirst({
+    where: {
+      tokenHash: hashSessionToken(token),
+      expiresAt: { gt: new Date() },
+      revokedAt: null,
+    },
+    select: { username: true },
+  });
+}
+
+/** Revoke an active session so the token stops working immediately. */
+export async function revokeSessionToken(token: string): Promise<void> {
+  await prisma.session.updateMany({
+    where: {
+      tokenHash: hashSessionToken(token),
+      revokedAt: null,
+    },
+    data: { revokedAt: new Date() },
+  });
 }
 
 /**
@@ -113,7 +171,7 @@ export async function hasAnyUser(): Promise<boolean> {
  */
 export async function createUser(
   username: string,
-  password: string
+  password: string,
 ): Promise<{ id: number; username: string }> {
   const existing = await prisma.user.findFirst();
   if (existing) {
